@@ -25,5 +25,7 @@ jobs:
         run: |
           pip install requests gspread google-auth
 
-      - name: Run script
-        run: python kalshi_tracker.py
+      - name: Run trackers
+        run: |
+          python kalshi_tracker.py
+          python forecast_tracker.py
