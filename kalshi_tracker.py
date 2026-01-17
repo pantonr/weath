@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, timezone
 import gspread
 from google.oauth2.service_account import Credentials
+import json, os
 
 SERIES = ["KXHIGHNY","KXLOWTNYC","KXHIGHMIA","KXLOWTMIA"]
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1DtRLA88PCDRD3DFd6r9H1HN5Q7K2nK075LNbbXpy7sU/edit"
@@ -15,8 +16,8 @@ BASE = "https://api.elections.kalshi.com"
 # GOOGLE SHEETS
 # =========================
 def init_sheets():
-    creds = Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE,
+    creds = Credentials.from_service_account_info(
+        json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]),
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     gc = gspread.authorize(creds)
