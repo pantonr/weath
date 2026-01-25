@@ -215,11 +215,13 @@ def main():
                     json=payload,
                     timeout=10,
                 )
-                resp.raise_for_status()
-                print("ORDER PLACED:", resp.json())
+                # Don't use raise_for_status here to avoid crashing
+                if resp.status_code >= 400:
+                    print(f"  ERROR PLACING ORDER: HTTP {resp.status_code} - {resp.text}")
+                else:
+                    print("ORDER PLACED:", resp.json())
             except Exception as e:
-                print(f"ERROR PLACING ORDER: {e}")
-                # Continue execution instead of failing
+                print(f"  ERROR PLACING ORDER: {e}")
         else:
             print("LIVE_TRADING is False — no order sent")
 
