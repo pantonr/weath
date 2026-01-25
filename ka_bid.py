@@ -125,7 +125,8 @@ def strike_from_ticker(ticker):
 # MAIN
 # =========================
 def main():
-    obs_date = datetime.now().date()
+    #obs_date = datetime.now().date()
+    obs_date = datetime.now().date() + timedelta(days=1)
     kalshi_day = kalshi_fragment_for_date(obs_date)
 
     path = "/trade-api/v2/markets"
