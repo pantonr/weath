@@ -1,9 +1,10 @@
 name: Test Kalshi Script
 
 on:
+  workflow_dispatch:        # Keep this! It lets you click "Run workflow" manually.
   schedule:
-    - cron: '30 15 * * *'
-    
+    - cron: '30 15 * * *'  # Runs at 10:30 AM EST
+
 jobs:
   test:
     runs-on: ubuntu-latest
