@@ -169,6 +169,54 @@ def get_entry_price_cents(order: dict) -> int | None:
                 pass
     return None
 
+
+
+# Add this function right before main()
+def find_matching_markets(ticker, event_markets_cache):
+    """Try multiple strategies to find matching markets for a ticker"""
+    
+    # Strategy 1: Original event ticker derivation
+    event_ticker = derive_event_ticker_from_market_ticker(ticker)
+    if event_ticker in event_markets_cache:
+        markets = event_markets_cache[event_ticker]
+        if markets:
+            return event_ticker, markets
+    
+    # Strategy 2: Temperature-safe event ticker derivation
+    temp_event_ticker = derive_event_ticker_temp_safe(ticker)
+    if temp_event_ticker != event_ticker and temp_event_ticker not in event_markets_cache:
+        event_markets_cache[temp_event_ticker] = fetch_event_markets(temp_event_ticker)
+    if temp_event_ticker in event_markets_cache and event_markets_cache[temp_event_ticker]:
+        return temp_event_ticker, event_markets_cache[temp_event_ticker]
+    
+    # Strategy 3: Extract date and base name pattern
+    date_match = re.search(r'-(\d+[A-Z]{3}\d+)$', ticker)
+    base_match = re.search(r'^([A-Z]+)', ticker)
+    if date_match and base_match:
+        date_part = date_match.group(1)
+        base_part = base_match.group(1)
+        pattern_event = f"{base_part}-{date_part}"
+        if pattern_event not in event_markets_cache:
+            event_markets_cache[pattern_event] = fetch_event_markets(pattern_event)
+        if pattern_event in event_markets_cache and event_markets_cache[pattern_event]:
+            return pattern_event, event_markets_cache[pattern_event]
+    
+    # Strategy 4: For KX temperature tickers specifically
+    kx_match = re.search(r'^(KX(?:HIGH|LOW)T[A-Z]+)-(\d+[A-Z]{3}\d+)$', ticker)
+    if kx_match:
+        location = kx_match.group(1).replace("HIGHT", "").replace("LOWT", "")
+        date_part = kx_match.group(2)
+        kx_pattern = f"KX-{date_part}"
+        if kx_pattern not in event_markets_cache:
+            event_markets_cache[kx_pattern] = fetch_event_markets(kx_pattern)
+        if kx_pattern in event_markets_cache and event_markets_cache[kx_pattern]:
+            return kx_pattern, event_markets_cache[kx_pattern]
+    
+    # Return original if all strategies failed
+    return event_ticker, event_markets_cache.get(event_ticker, [])
+
+
+
 # =========================
 # MAIN
 # =========================
@@ -188,7 +236,9 @@ def main():
             continue
 
         # ---- primary (legacy) event ticker
-        event_ticker = derive_event_ticker_from_market_ticker(ticker)
+        #event_ticker = derive_event_ticker_from_market_ticker(ticker)
+        event_ticker, markets = find_matching_markets(ticker, event_markets_cache)
+
 
         side = (o.get("side") or "").lower()
         shares = int(o.get("fill_count") or 0)
