@@ -74,7 +74,6 @@ def init_sheet():
 
     return ws
 
-
 def build_header():
     header = [
         "fetched_at","order_id","event_ticker","ticker","side","shares",
@@ -87,9 +86,6 @@ def build_header():
         header.append(f"option{i:02d}")
     for i in range(1, MAX_OPTIONS + 1):
         header.append(f"option{i:02d}_label")
-    
-    # Add winning bracket columns at the end
-    header.extend(["winning_bracket_ticker", "winning_bracket_label"])
     return header
 
 def rebuild_sheet(ws, rows):
@@ -258,29 +254,6 @@ def main():
             pnl = f"{pnl_val:.2f}"
             won_lost = "WON" if win else "LOST"
 
-
-        # Add this right before the rows.append call
-        winning_bracket_ticker = ""
-        winning_bracket_label = ""
-        
-        # Find the winning market in this event
-        if market_result in ("YES", "NO"):
-            for m in markets:
-                m_ticker = m.get("ticker")
-                m_result = (m.get("result") or "").upper()
-                if m_result == "YES":
-                    winning_bracket_ticker = m_ticker
-                    winning_bracket_label = (
-                        m.get("subtitle") or 
-                        m.get("title") or 
-                        m.get("description") or 
-                        m.get("yes_title") or 
-                        m.get("no_title") or 
-                        ""
-                    )
-                    break
-        
-  
         rows.append([
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             oid,
@@ -298,9 +271,7 @@ def main():
             o.get("created_time") or "",
             f"https://kalshi.com/markets/{ticker}",
             *option_marks,
-            *option_labels,
-            winning_bracket_ticker,  # Add this at the end
-            winning_bracket_label    # Add this at the end
+            *option_labels
         ])
 
     rebuild_sheet(ws, rows)
