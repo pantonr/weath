@@ -129,19 +129,30 @@ def fetch_event_markets(event_ticker: str):
 
     def strike_sort_key(m):
         t = m.get("ticker", "")
-        m2 = re.search(r"-(?:B|T)-?(\d+(?:\.5)?)$", t)
+        m2 = re.search(r"-(?:B|T)(-?\d+(?:\.5)?)$", t)
         if not m2:
             return 10**9
         return float(m2.group(1))
 
     return sorted(markets, key=strike_sort_key)
 
+# -------------------------
+# EVENT TICKER LOGIC
+# -------------------------
 def derive_event_ticker_from_market_ticker(ticker: str) -> str:
-    # Removes trailing temp outcome only:
-    # -B21.5, -T45, -B-6.5, -T-13
+    # ORIGINAL, unchanged behavior
+    parts = ticker.split("-")
+    if len(parts) < 2:
+        return ticker
+    return "-".join(parts[:-1])
+
+def derive_event_ticker_temp_safe(ticker: str) -> str:
+    # Only strips temperature bucket suffix
     return re.sub(r"-(?:B|T)-?\d+(?:\.5)?$", "", ticker)
 
-
+# =========================
+# PRICE
+# =========================
 def get_entry_price_cents(order: dict) -> int | None:
     side = order.get("side")
     if side == "yes" and order.get("yes_price") is not None:
@@ -176,6 +187,7 @@ def main():
         if not ticker:
             continue
 
+        # ---- primary (legacy) event ticker
         event_ticker = derive_event_ticker_from_market_ticker(ticker)
 
         side = (o.get("side") or "").lower()
@@ -187,10 +199,21 @@ def main():
 
         total_cost = (price * shares) / 100.0
 
+        # ---- fetch markets (legacy first)
         if event_ticker not in event_markets_cache:
             event_markets_cache[event_ticker] = fetch_event_markets(event_ticker)
 
         markets = event_markets_cache[event_ticker]
+
+        # ---- FALLBACK ONLY IF NOTHING FOUND
+        if not markets:
+            alt_event = derive_event_ticker_temp_safe(ticker)
+            if alt_event != event_ticker:
+                if alt_event not in event_markets_cache:
+                    event_markets_cache[alt_event] = fetch_event_markets(alt_event)
+                if event_markets_cache[alt_event]:
+                    event_ticker = alt_event
+                    markets = event_markets_cache[alt_event]
 
         option_marks = [""] * MAX_OPTIONS
         option_labels = [""] * MAX_OPTIONS
@@ -213,10 +236,8 @@ def main():
             market_cache[ticker] = fetch_market(ticker)
 
         market = market_cache[ticker]
-
         market_result = (market.get("result") or "").upper()
 
-        # ---- LIVE PRICE / IMPLIED PROBABILITY
         current_yes = (
             market.get("last_price")
             or market.get("yes_bid")
@@ -225,10 +246,10 @@ def main():
 
         implied_pct = ""
         if current_yes is not None:
-            if side == "yes":
-                implied_pct = round(current_yes / 100, 4)
-            else:
-                implied_pct = round((100 - current_yes) / 100, 4)
+            implied_pct = round(
+                current_yes / 100 if side == "yes" else (100 - current_yes) / 100,
+                4
+            )
 
         won_lost = ""
         pnl = ""
