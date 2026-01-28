@@ -16,8 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1CwsxbjF1AajK8O0mdLOpKg7BXGlJM4-MYTeH672P9hg/edit"
 TAB_NAME = "kalshi past bids"
 
-
-SERVICE_ACCOUNT_FILE = "service_account.json"  # stays, but written at runtime
+SERVICE_ACCOUNT_FILE = "service_account.json"
 
 KALSHI_API_KEY_ID = os.environ["KALSHI_API_KEY_ID"]
 KALSHI_PRIVATE_KEY_PEM = os.environ["KALSHI_PRIVATE_KEY_PEM"]
@@ -80,6 +79,7 @@ def build_header():
         "fetched_at","order_id","event_ticker","ticker","side","shares",
         "entry_price_cents","total_cost_dollars",
         "market_result","won_lost","pnl_dollars",
+        "current_yes_price_cents","current_implied_win_pct",
         "created_time","market_url"
     ]
     for i in range(1, MAX_OPTIONS + 1):
@@ -108,7 +108,6 @@ def fetch_orders():
     return r.json().get("orders", [])
 
 def fetch_market(ticker: str):
-    # NOTE: markets/{ticker} does not require auth in your earlier code; keep it simple
     r = requests.get(
         f"{KALSHI_BASE_URL}/trade-api/v2/markets/{ticker}",
         timeout=HTTP_TIMEOUT
@@ -131,7 +130,6 @@ def fetch_event_markets(event_ticker: str):
     def strike_sort_key(m):
         t = m.get("ticker", "")
         m2 = re.search(r"-(?:B|T)(\d+(?:\.5)?)$", t)
-        # Put T (tail) buckets at extremes but still stable; if no strike parse, push to end
         if not m2:
             return 10**9
         return float(m2.group(1))
@@ -139,31 +137,18 @@ def fetch_event_markets(event_ticker: str):
     return sorted(markets, key=strike_sort_key)
 
 def derive_event_ticker_from_market_ticker(ticker: str) -> str:
-    """
-    For your use case, Kalshi market tickers generally look like:
-      EVENT-TICKER + "-" + OUTCOME
-    e.g. KXHIGHTDC-26JAN28-B21.5  -> event = KXHIGHTDC-26JAN28
-         KXBTC15M-26JAN250115-15  -> event = KXBTC15M-26JAN250115
-         KXNCAAWBGAME-26JAN24BGSUMASS-MASS -> event = KXNCAAWBGAME-26JAN24BGSUMASS
-    So: event_ticker = everything except the last "-<outcome>" segment.
-    """
     parts = ticker.split("-")
     if len(parts) < 2:
         return ticker
     return "-".join(parts[:-1])
 
 def get_entry_price_cents(order: dict) -> int | None:
-    """
-    Your old logic used yes_price / no_price.
-    Keep that, but add fallbacks because some orders may use different keys.
-    """
     side = order.get("side")
     if side == "yes" and order.get("yes_price") is not None:
         return int(order["yes_price"])
     if side == "no" and order.get("no_price") is not None:
         return int(order["no_price"])
 
-    # fallbacks (seen in some order payloads)
     for k in ("price", "fill_price", "avg_price", "average_price"):
         v = order.get(k)
         if v is not None:
@@ -182,9 +167,8 @@ def main():
     orders = fetch_orders()
     rows = []
 
-    # Cache markets list per event so you don't hammer API
     event_markets_cache = {}
-    market_result_cache = {}
+    market_cache = {}
 
     for o in orders:
         oid = o.get("order_id") or ""
@@ -196,7 +180,6 @@ def main():
 
         side = (o.get("side") or "").lower()
         shares = int(o.get("fill_count") or 0)
-
         price = get_entry_price_cents(o)
 
         if shares == 0 or price is None or side not in ("yes", "no"):
@@ -204,7 +187,6 @@ def main():
 
         total_cost = (price * shares) / 100.0
 
-        # ----- Options / labels for that event
         if event_ticker not in event_markets_cache:
             event_markets_cache[event_ticker] = fetch_event_markets(event_ticker)
 
@@ -227,12 +209,26 @@ def main():
             if m.get("ticker") == ticker:
                 option_marks[i] = "YES" if side == "yes" else "NO"
 
-        # ----- Market result + pnl: ALWAYS from markets/{ticker}
-        if ticker not in market_result_cache:
-            market_result_cache[ticker] = fetch_market(ticker)
+        if ticker not in market_cache:
+            market_cache[ticker] = fetch_market(ticker)
 
-        market = market_result_cache[ticker]
+        market = market_cache[ticker]
+
         market_result = (market.get("result") or "").upper()
+
+        # ---- LIVE PRICE / IMPLIED PROBABILITY
+        current_yes = (
+            market.get("last_price")
+            or market.get("yes_bid")
+            or market.get("yes_ask")
+        )
+
+        implied_pct = ""
+        if current_yes is not None:
+            if side == "yes":
+                implied_pct = round(current_yes / 100, 4)
+            else:
+                implied_pct = round((100 - current_yes) / 100, 4)
 
         won_lost = ""
         pnl = ""
@@ -255,6 +251,8 @@ def main():
             market_result,
             won_lost,
             pnl,
+            current_yes,
+            implied_pct,
             o.get("created_time") or "",
             f"https://kalshi.com/markets/{ticker}",
             *option_marks,
