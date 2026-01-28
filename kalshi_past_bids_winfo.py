@@ -129,7 +129,7 @@ def fetch_event_markets(event_ticker: str):
 
     def strike_sort_key(m):
         t = m.get("ticker", "")
-        m2 = re.search(r"-(?:B|T)(\d+(?:\.5)?)$", t)
+        m2 = re.search(r"-(?:B|T)-?(\d+(?:\.5)?)$", t)
         if not m2:
             return 10**9
         return float(m2.group(1))
@@ -137,10 +137,10 @@ def fetch_event_markets(event_ticker: str):
     return sorted(markets, key=strike_sort_key)
 
 def derive_event_ticker_from_market_ticker(ticker: str) -> str:
-    parts = ticker.split("-")
-    if len(parts) < 2:
-        return ticker
-    return "-".join(parts[:-1])
+    # Removes trailing temp outcome only:
+    # -B21.5, -T45, -B-6.5, -T-13
+    return re.sub(r"-(?:B|T)-?\d+(?:\.5)?$", "", ticker)
+
 
 def get_entry_price_cents(order: dict) -> int | None:
     side = order.get("side")
