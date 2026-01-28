@@ -6,7 +6,8 @@ from google.oauth2.service_account import Credentials
 import json, os
 
 SERIES = ["KXHIGHNY", "KXLOWTNYC", "KXHIGHMIA", "KXLOWTMIA"]
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1DtRLA88PCDRD3DFd6r9H1HN5Q7K2nK075LNbbXpy7sU/edit"
+#SHEET_URL = "https://docs.google.com/spreadsheets/d/1DtRLA88PCDRD3DFd6r9H1HN5Q7K2nK075LNbbXpy7sU/edit"
+SHEET_ID = "1NCDUrW8cAB5Igrmuqqx4oabUOHA5hQ7f7bFLBhddOm4"
 BASE = "https://api.elections.kalshi.com"
 
 # =========================
@@ -18,7 +19,7 @@ def init_sheets():
         scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
     gc = gspread.authorize(creds)
-    sh = gc.open_by_url(SHEET_URL)
+    sh = gc.open_by_key(SHEET_ID)
     out = {}
 
     for s in SERIES:
